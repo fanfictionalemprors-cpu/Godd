@@ -13,7 +13,7 @@ logging.basicConfig(
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN_HERE")
 
-# /start command
+# /start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "नमस्कार! 👋\n\n"
@@ -28,7 +28,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_chat_action("typing")
     
     try:
-        # Deep-translator: Auto detect to Hindi
         translated = GoogleTranslator(source='auto', target='hi').translate(user_text)
         await update.message.reply_text(f"**अनुवाद:**\n{translated}", parse_mode="Markdown")
     except Exception as e:

@@ -1,0 +1,91 @@
+import os
+import fitz  # PyMuPDF library for EPUB
+import logging
+from telegram import Update
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+from googletrans import Translator
+
+# Logging Setup
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+
+# Token Railway environment variable se aayega
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN_HERE")
+translator = Translator()
+
+# /start command
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    welcome_text = (
+        "नमस्कार! 👋\n\n"
+        "1. मुझे कोई भी **Text Message** भेजें - मैं उसका हिंदी अनुवाद कर दूंगा।\n"
+        "2. मुझे कोई भी **EPUB (.epub)** फ़ाइल भेजें - मैं उसके शुरुआती भाग का अनुवाद कर दूंगा।"
+    )
+    await update.message.reply_text(welcome_text)
+
+# Text Translator
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_text = update.message.text
+    await update.message.reply_chat_action("typing")
+    
+    try:
+        translation = translator.translate(user_text, dest='hi')
+        await update.message.reply_text(f"**अनुवाद:**\n{translation.text}", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text("अनुवाद करने में समस्या आई।")
+
+# EPUB Handler
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    document = update.message.document
+    file_name = document.file_name
+
+    if not file_name.endswith('.epub'):
+        await update.message.reply_text("कृपया केवल `.epub` फॉर्मेट की फ़ाइल ही भेजें।")
+        return
+
+    await update.message.reply_text("EPUB फ़ाइल मिल गई है, प्रोसेसिंग चालू है...")
+    await update.message.reply_chat_action("typing")
+
+    file_path = f"./{file_name}"
+
+    try:
+        file = await context.bot.get_file(document.file_id)
+        await file.download_to_drive(file_path)
+
+        doc = fitz.open(file_path)
+        extracted_text = ""
+        
+        for page_num in range(min(3, len(doc))):
+            extracted_text += doc[page_num].get_text()
+
+        doc.close()
+        os.remove(file_path)
+
+        if not extracted_text.strip():
+            await update.message.reply_text("इस EPUB फ़ाइल से कोई टेक्स्ट नहीं पढ़ा जा सका।")
+            return
+
+        short_text = extracted_text[:1500]
+        translation = translator.translate(short_text, dest='hi')
+
+        response = (
+            f"📚 **EPUB से निकाला गया अनुवाद (शुरुआती भाग):**\n\n"
+            f"{translation.text}"
+        )
+        await update.message.reply_text(response)
+
+    except Exception as e:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        await update.message.reply_text(f"EPUB प्रोसेस करने में एरर आया: {str(e)}")
+
+if __name__ == '__main__':
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+
+    print("Bot is running...")
+    app.run_polling()

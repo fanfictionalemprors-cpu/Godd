@@ -1,9 +1,9 @@
 import os
-import pymupdf as fitz  # Python 3.13 support ke liye
+import pymupdf as fitz
 import logging
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
-from googletrans import Translator
+from deep_translator import GoogleTranslator
 
 # Logging Setup
 logging.basicConfig(
@@ -11,11 +11,9 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Token Railway environment variable se aayega
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN_HERE")
-translator = Translator()
 
-# /start command handler
+# /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "नमस्कार! 👋\n\n"
@@ -30,8 +28,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_chat_action("typing")
     
     try:
-        translation = translator.translate(user_text, dest='hi')
-        await update.message.reply_text(f"**अनुवाद:**\n{translation.text}", parse_mode="Markdown")
+        # Deep-translator: Auto detect to Hindi
+        translated = GoogleTranslator(source='auto', target='hi').translate(user_text)
+        await update.message.reply_text(f"**अनुवाद:**\n{translated}", parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text("अनुवाद करने में समस्या आई।")
 
@@ -40,7 +39,6 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     document = update.message.document
     file_name = document.file_name
 
-    # Check if file is EPUB
     if not file_name.lower().endswith('.epub'):
         await update.message.reply_text("कृपया केवल `.epub` फॉर्मेट की फ़ाइल ही भेजें।")
         return
@@ -51,15 +49,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file_path = f"./{file_name}"
 
     try:
-        # Download file from Telegram
         file = await context.bot.get_file(document.file_id)
         await file.download_to_drive(file_path)
 
-        # Extract text using pymupdf
         doc = fitz.open(file_path)
         extracted_text = ""
         
-        # Read initial pages/chapters
         for page_num in range(min(3, len(doc))):
             extracted_text += doc[page_num].get_text()
 
@@ -71,13 +66,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("इस EPUB फ़ाइल से कोई टेक्स्ट नहीं पढ़ा जा सका।")
             return
 
-        # Translate extracted text
         short_text = extracted_text[:1500]
-        translation = translator.translate(short_text, dest='hi')
+        translated = GoogleTranslator(source='auto', target='hi').translate(short_text)
 
         response = (
             f"📚 **EPUB से निकाला गया अनुवाद (शुरुआती भाग):**\n\n"
-            f"{translation.text}"
+            f"{translated}"
         )
         await update.message.reply_text(response)
 
@@ -89,7 +83,6 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == '__main__':
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Handlers Add Karen
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
